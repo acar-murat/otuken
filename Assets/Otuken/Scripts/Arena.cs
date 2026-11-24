@@ -307,7 +307,7 @@ namespace Otuken
             if (frac < 0.01f) { Progress.positionCount = 0; return; }
             Progress.startColor = Progress.endColor = HeroDb.TeamColor[p > 0 ? 0 : 1];
             int seg = Mathf.Max(2, Mathf.CeilToInt(72 * frac));
-            Prim.Arc(Progress, Vector3.zero, PointR + 0.12f, Mathf.PI / 2, Mathf.PI / 2 - frac * Util.Tau, seg, 0.03f);
+            Prim.Arc(Progress, Vector3.zero, Arena.PointR + 0.12f, Mathf.PI / 2, Mathf.PI / 2 - frac * Util.Tau, seg, 0.03f);
         }
     }
 }
