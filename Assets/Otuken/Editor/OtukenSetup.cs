@@ -1,0 +1,123 @@
+using System.IO;
+using UnityEditor;
+using UnityEditor.Build;
+using UnityEditor.Build.Reporting;
+using UnityEditor.SceneManagement;
+using UnityEngine;
+
+namespace Otuken.EditorTools
+{
+    /// <summary>One-click project configuration and mobile builds, under the "Otuken" menu.</summary>
+    public static class OtukenSetup
+    {
+        const string ScenePath = "Assets/Otuken/Otuken.unity";
+        const string BundleId = "com.otuken.arena";
+
+        [MenuItem("Otuken/Set Up Project", priority = 0)]
+        public static void SetUp()
+        {
+            PlayerSettings.companyName = "Otuken";
+            PlayerSettings.productName = "Ötüken";
+            PlayerSettings.SetApplicationIdentifier(NamedBuildTarget.Android, BundleId);
+            PlayerSettings.SetApplicationIdentifier(NamedBuildTarget.iOS, BundleId);
+
+            // C# is compiled ahead of time to native ARM64 through IL2CPP (required by Google Play and iOS).
+            PlayerSettings.SetScriptingBackend(NamedBuildTarget.Android, ScriptingImplementation.IL2CPP);
+            PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
+
+            PlayerSettings.defaultInterfaceOrientation = UIOrientation.AutoRotation;
+            PlayerSettings.allowedAutorotateToPortrait = false;
+            PlayerSettings.allowedAutorotateToPortraitUpsideDown = false;
+            PlayerSettings.allowedAutorotateToLandscapeLeft = true;
+            PlayerSettings.allowedAutorotateToLandscapeRight = true;
+
+            EnsureScene();
+            AlwaysInclude("Sprites/Default"); // used by ground rings and effect lines
+            AssetDatabase.SaveAssets();
+            Debug.Log("Ötüken: project set up. Press Play to test, or use Otuken > Build Android APK.");
+        }
+
+        static void EnsureScene()
+        {
+            if (!File.Exists(ScenePath))
+            {
+                if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
+                var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+                EditorSceneManager.SaveScene(scene, ScenePath);
+            }
+            EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene(ScenePath, true) };
+        }
+
+        static void AlwaysInclude(string shaderName)
+        {
+            var shader = Shader.Find(shaderName);
+            if (shader == null) return;
+            var settings = AssetDatabase.LoadAssetAtPath<Object>("ProjectSettings/GraphicsSettings.asset");
+            if (settings == null) return;
+            var so = new SerializedObject(settings);
+            var list = so.FindProperty("m_AlwaysIncludedShaders");
+            if (list == null) return;
+            for (int i = 0; i < list.arraySize; i++)
+                if (list.GetArrayElementAtIndex(i).objectReferenceValue == shader) return;
+            list.InsertArrayElementAtIndex(list.arraySize);
+            list.GetArrayElementAtIndex(list.arraySize - 1).objectReferenceValue = shader;
+            so.ApplyModifiedProperties();
+        }
+
+        [MenuItem("Otuken/Build Android APK (test on phone)", priority = 20)]
+        public static void BuildApk()
+        {
+            SetUp();
+            EditorUserBuildSettings.buildAppBundle = false;
+            Build(BuildTarget.Android, "Builds/Android/Otuken.apk");
+        }
+
+        [MenuItem("Otuken/Build Android App Bundle (Google Play)", priority = 21)]
+        public static void BuildAab()
+        {
+            SetUp();
+            EditorUserBuildSettings.buildAppBundle = true;
+            Build(BuildTarget.Android, "Builds/Android/Otuken.aab");
+        }
+
+        [MenuItem("Otuken/Build iOS Xcode Project (needs a Mac)", priority = 22)]
+        public static void BuildIos()
+        {
+            SetUp();
+            Build(BuildTarget.iOS, "Builds/iOS");
+        }
+
+        /// <summary>Entry point for cloud builds (GitHub Actions / GameCI): exits with 0 on success, 1 on failure.</summary>
+        public static void BuildAndroidCi()
+        {
+            SetUp();
+            EditorUserBuildSettings.buildAppBundle = false;
+            EditorApplication.Exit(Build(BuildTarget.Android, "Builds/Android/Otuken.apk") ? 0 : 1);
+        }
+
+        public static void BuildIosCi()
+        {
+            SetUp();
+            EditorApplication.Exit(Build(BuildTarget.iOS, "Builds/iOS") ? 0 : 1);
+        }
+
+        static bool Build(BuildTarget target, string path)
+        {
+            var report = BuildPipeline.BuildPlayer(new BuildPlayerOptions
+            {
+                scenes = new[] { ScenePath },
+                locationPathName = path,
+                target = target,
+                options = BuildOptions.None,
+            });
+            if (report.summary.result == BuildResult.Succeeded)
+            {
+                Debug.Log($"Ötüken: built {path} ({report.summary.totalSize / (1024 * 1024)} MB).");
+                if (!Application.isBatchMode) EditorUtility.RevealInFinder(path);
+                return true;
+            }
+            Debug.LogError($"Ötüken: build {report.summary.result}. The errors above in the Console say why.");
+            return false;
+        }
+    }
+}
