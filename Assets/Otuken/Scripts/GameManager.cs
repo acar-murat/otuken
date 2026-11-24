@@ -120,6 +120,7 @@ namespace Otuken
         {
             Application.logMessageReceived += OnLog;
             autotest = AutotestRequested();
+            if (autotest) Application.runInBackground = true; // keep playing if a system pop-up takes focus
             Debug.Log($"[OTUKEN] boot autotest={autotest} device={SystemInfo.deviceModel} os={SystemInfo.operatingSystem} " +
                       $"gfx={SystemInfo.graphicsDeviceType} screen={Screen.width}x{Screen.height} dpi={Screen.dpi:0} " +
                       $"pipeline={(UnityEngine.Rendering.GraphicsSettings.currentRenderPipeline != null ? UnityEngine.Rendering.GraphicsSettings.currentRenderPipeline.name : "built-in")} " +
