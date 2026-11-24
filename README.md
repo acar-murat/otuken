@@ -56,7 +56,31 @@ The build uses Unity **6000.3.29f1** (Unity 6.3 LTS). It needs three repository 
 
 The first build takes about 30–40 minutes. Later builds reuse the cached `Library` folder and finish faster.
 
-## iOS
+## iPhone without a developer account (free)
+
+The workflow `.github/workflows/build-ios.yml` runs manually, from **Actions → Build iOS → Run workflow**. It works in two stages:
+
+1. A Linux runner exports the Xcode project.
+2. A macOS runner compiles it into an **unsigned** `.ipa`, attached to the run as **Otuken-iOS-unsigned**.
+
+A Mac build costs ten times the Linux rate from the free minutes, so start it only when you want a new iPhone build.
+
+To install the `.ipa` on your iPhone from Windows:
+
+1. Install **iTunes** from apple.com (not the Microsoft Store version) and **[Sideloadly](https://sideloadly.io)**.
+2. Connect the iPhone by USB and tap *Trust this computer* on the phone.
+3. In Sideloadly, drag in `Otuken-unsigned.ipa`, enter your normal Apple ID, and click **Start**. Sideloadly signs the app with a free certificate and installs it.
+4. On the iPhone, open *Settings → Privacy & Security* and turn on **Developer Mode**. The phone restarts.
+5. Then open *Settings → General → VPN & Device Management* and trust your Apple ID.
+
+Limits of a free Apple ID:
+
+- The app stops launching after **7 days**. Re-run Sideloadly to refresh it; your game data is kept.
+- At most 3 sideloaded apps can be installed at once.
+
+The paid Apple Developer Program removes these limits and adds TestFlight.
+
+## iOS with a Mac
 
 iOS builds need a Mac with Xcode. On the Mac, open the project and choose **Otuken → Build iOS Xcode Project**. Then open `Builds/iOS/Unity-iPhone.xcodeproj` in Xcode, set your Apple team, and run it on a device. Without a Mac, a cloud build service such as Unity Build Automation can produce the iOS build.
 

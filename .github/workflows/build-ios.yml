@@ -1,0 +1,106 @@
+name: Build iOS (unsigned, for Sideloadly)
+
+# Manual only: the second job runs on a macOS runner, which costs 10x Linux minutes.
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  xcode-project:
+    name: Unity → Xcode project
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Check Unity license secrets
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        run: |
+          if [ -z "$UNITY_LICENSE" ] || [ -z "$UNITY_EMAIL" ] || [ -z "$UNITY_PASSWORD" ]; then
+            echo "::error::Add the UNITY_LICENSE, UNITY_EMAIL and UNITY_PASSWORD repository secrets (see README, 'Cloud builds')."
+            exit 1
+          fi
+
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
+      - uses: actions/checkout@v4
+
+      - name: Cache Unity Library
+        uses: actions/cache@v4
+        with:
+          path: Library
+          key: Library-Otuken-iOS-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
+          restore-keys: Library-Otuken-iOS-
+
+      - name: Export Xcode project
+        uses: game-ci/unity-builder@v4
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          unityVersion: 6000.3.29f1
+          customImage: unityci/editor:ubuntu-6000.3.29f1-ios-4
+          targetPlatform: iOS
+          buildMethod: Otuken.EditorTools.OtukenSetup.BuildIosCi
+
+      # Artifacts drop Unix file permissions; the Xcode project has build scripts that must stay executable.
+      - name: Pack Xcode project
+        run: sudo tar -czf xcode-project.tgz -C Builds iOS
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xcode-project
+          path: xcode-project.tgz
+          retention-days: 1
+          if-no-files-found: error
+
+  ipa:
+    name: Xcode → unsigned .ipa
+    needs: xcode-project
+    runs-on: macos-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: xcode-project
+
+      - name: Unpack
+        run: tar -xzf xcode-project.tgz
+
+      - name: Build without signing
+        working-directory: iOS
+        run: |
+          set -o pipefail
+          xcodebuild -project Unity-iPhone.xcodeproj -scheme Unity-iPhone -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath ../dd \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build | tail -n 200
+
+      - name: Package .ipa
+        run: |
+          APP=$(find dd/Build/Products -maxdepth 2 -name "*.app" -type d | head -n 1)
+          test -n "$APP" || { echo "::error::No .app produced"; exit 1; }
+          mkdir Payload
+          cp -R "$APP" Payload/
+          zip -qry Otuken-unsigned.ipa Payload
+          ls -lh Otuken-unsigned.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Otuken-iOS-unsigned
+          path: Otuken-unsigned.ipa
+          if-no-files-found: error
