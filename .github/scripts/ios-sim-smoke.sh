@@ -5,6 +5,9 @@
 set -uo pipefail
 APP="$1"; OUT="$2"
 mkdir -p "$OUT"
+# Absolute paths matter: simctl's --stdout/--stderr are opened by the simulator's launchd, and a relative
+# path resolves against its read-only root, which makes every launch fail with EROFS ("job spawn failed").
+OUT=$(cd "$OUT" && pwd); APP=$(cd "$APP" && pwd)
 START_MARK=$(mktemp)
 
 BUNDLE=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")
