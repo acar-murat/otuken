@@ -121,12 +121,13 @@ jobs:
           set -o pipefail
           xcodebuild -project Unity-iPhone.xcodeproj -scheme Unity-iPhone -configuration Release \
             -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath ../dd \
-            CODE_SIGNING_ALLOWED=NO build | tail -n 80
+            CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="-" DEVELOPMENT_TEAM="" PROVISIONING_PROFILE_SPECIFIER="" \
+            CODE_SIGNING_REQUIRED=YES CODE_SIGNING_ALLOWED=YES build | tail -n 80
       - name: Run the game
         run: |
           APP=$(find dd/Build/Products -maxdepth 2 -name "*.app" -type d | head -n 1)
-          # Apple-silicon simulators refuse to launch completely unsigned apps; an ad-hoc signature is enough.
-          codesign --force --deep --sign - "$APP"
+          # Xcode signed it "to run locally" (ad hoc, with the simulator entitlements it embeds itself).
+          codesign -d --entitlements - "$APP" 2>&1 | head -20 || true
           bash .github/scripts/ios-sim-smoke.sh "$APP" ios-results
           # Zipped simulator build, ready to upload to Appetize.io for manual play in the browser.
           ditto -c -k --sequesterRsrc --keepParent "$APP" Otuken-ios-simulator.zip
