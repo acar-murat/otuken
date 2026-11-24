@@ -119,6 +119,9 @@ namespace Otuken
             view.TreeLight.range = 4.5f;
             view.TreeLight.intensity = 1.6f;
             view.TreeLight.shadows = LightShadows.None;
+
+            // The map never moves: merge it into a handful of draw calls.
+            StaticBatchingUtility.Combine(root.gameObject);
             return view;
         }
 
@@ -136,15 +139,15 @@ namespace Otuken
                     g.localPosition = p;
                     g.localEulerAngles = new Vector3(0, (R() - 0.5f) * 20f, 0);
                     var grey = new Color(0.52f, 0.53f, 0.56f);
-                    Prim.Make(PrimitiveType.Cube, g, new Vector3(0, 0.6f, 0), new Vector3(o.R * 1.6f, 1.2f, o.R * 1.1f), grey);
-                    Prim.Make(PrimitiveType.Sphere, g, new Vector3(0, 1.2f, 0), new Vector3(o.R * 1.6f, 0.4f, o.R * 1.1f), grey);
+                    Prim.Make(PrimitiveType.Cube, g, new Vector3(0, 0.36f, 0), new Vector3(o.R * 1.6f, 0.72f, o.R * 1.1f), grey);
+                    Prim.Make(PrimitiveType.Sphere, g, new Vector3(0, 0.72f, 0), new Vector3(o.R * 1.6f, 0.3f, o.R * 1.1f), grey);
                     var carve = new Color(0.2f, 0.2f, 0.23f);
                     float f = -o.R * 0.56f;
-                    Prim.Make(PrimitiveType.Cube, g, new Vector3(-o.R * 0.3f, 1.02f, f), new Vector3(o.R * 0.35f, 0.05f, 0.04f), carve, shadows: false);
-                    Prim.Make(PrimitiveType.Cube, g, new Vector3(o.R * 0.3f, 1.02f, f), new Vector3(o.R * 0.35f, 0.05f, 0.04f), carve, shadows: false);
-                    Prim.Make(PrimitiveType.Cube, g, new Vector3(0, 0.92f, f), new Vector3(0.04f, 0.16f, 0.04f), carve, shadows: false);
-                    Prim.Make(PrimitiveType.Cube, g, new Vector3(-o.R * 0.22f, 0.8f, f), new Vector3(o.R * 0.45f, 0.04f, 0.04f), carve, new Vector3(0, 0, -14), false);
-                    Prim.Make(PrimitiveType.Cube, g, new Vector3(o.R * 0.22f, 0.8f, f), new Vector3(o.R * 0.45f, 0.04f, 0.04f), carve, new Vector3(0, 0, 14), false);
+                    Prim.Make(PrimitiveType.Cube, g, new Vector3(-o.R * 0.3f, 0.6f, f), new Vector3(o.R * 0.35f, 0.04f, 0.04f), carve, shadows: false);
+                    Prim.Make(PrimitiveType.Cube, g, new Vector3(o.R * 0.3f, 0.6f, f), new Vector3(o.R * 0.35f, 0.04f, 0.04f), carve, shadows: false);
+                    Prim.Make(PrimitiveType.Cube, g, new Vector3(0, 0.52f, f), new Vector3(0.04f, 0.12f, 0.04f), carve, shadows: false);
+                    Prim.Make(PrimitiveType.Cube, g, new Vector3(-o.R * 0.22f, 0.43f, f), new Vector3(o.R * 0.45f, 0.035f, 0.04f), carve, new Vector3(0, 0, -14), false);
+                    Prim.Make(PrimitiveType.Cube, g, new Vector3(o.R * 0.22f, 0.43f, f), new Vector3(o.R * 0.45f, 0.035f, 0.04f), carve, new Vector3(0, 0, 14), false);
                     break;
                 }
                 case ObstacleType.Kurgan:
@@ -172,28 +175,30 @@ namespace Otuken
                     t.SetParent(root, false);
                     t.localPosition = p;
                     view.Tree = t;
+                    // Kept low and compact: the camera looks down from the south, so anything tall here
+                    // would hide the capture zone and the fights inside it.
                     var bark = new Color(0.27f, 0.19f, 0.12f);
-                    Prim.Make(PrimitiveType.Cylinder, t, new Vector3(0, 1.0f, 0), new Vector3(0.5f, 1.0f, 0.5f), bark);
-                    for (int i = 0; i < 6; i++)
+                    Prim.Make(PrimitiveType.Cylinder, t, new Vector3(0, 0.55f, 0), new Vector3(0.46f, 0.55f, 0.46f), bark);
+                    for (int i = 0; i < 5; i++)
                     {
-                        float a = i * Util.Tau / 6 + 0.4f;
-                        Prim.Make(PrimitiveType.Cylinder, t, new Vector3(Mathf.Cos(a) * 0.45f, 1.85f, Mathf.Sin(a) * 0.45f), new Vector3(0.12f, 0.45f, 0.12f), bark,
-                            new Vector3(Mathf.Sin(a) * 50f, 0, -Mathf.Cos(a) * 50f));
+                        float a = i * Util.Tau / 5 + 0.4f;
+                        Prim.Make(PrimitiveType.Cylinder, t, new Vector3(Mathf.Cos(a) * 0.3f, 1.05f, Mathf.Sin(a) * 0.3f), new Vector3(0.09f, 0.3f, 0.09f), bark,
+                            new Vector3(Mathf.Sin(a) * 55f, 0, -Mathf.Cos(a) * 55f));
                     }
                     var leafA = new Color(0.42f, 0.55f, 0.25f);
                     var leafB = new Color(0.78f, 0.64f, 0.27f);
-                    for (int i = 0; i < 9; i++)
+                    for (int i = 0; i < 6; i++)
                     {
-                        float a = i * Util.Tau / 9, rr = 0.75f + (i % 2) * 0.15f;
-                        Prim.Make(PrimitiveType.Sphere, t, new Vector3(Mathf.Cos(a) * rr, 2.35f + (i % 3) * 0.12f, Mathf.Sin(a) * rr), Vector3.one * (0.75f + (i % 2) * 0.15f),
+                        float a = i * Util.Tau / 6;
+                        Prim.Make(PrimitiveType.Sphere, t, new Vector3(Mathf.Cos(a) * 0.42f, 1.3f + (i % 2) * 0.08f, Mathf.Sin(a) * 0.42f), Vector3.one * 0.5f,
                             i % 3 == 0 ? leafB : leafA);
                     }
-                    Prim.Make(PrimitiveType.Sphere, t, new Vector3(0, 2.75f, 0), Vector3.one * 1.1f, leafA);
+                    Prim.Make(PrimitiveType.Sphere, t, new Vector3(0, 1.45f, 0), Vector3.one * 0.6f, leafA);
                     Color[] rags = { new Color(0.91f, 0.89f, 0.82f), new Color(0.76f, 0.25f, 0.18f), new Color(0.24f, 0.48f, 0.84f), new Color(0.91f, 0.71f, 0.29f) };
-                    for (int i = 0; i < 14; i++)
+                    for (int i = 0; i < 10; i++)
                     {
-                        float a = i * Util.Tau / 14 + 0.2f, rr = 1.05f + (i % 3) * 0.1f;
-                        Prim.Make(PrimitiveType.Cube, t, new Vector3(Mathf.Cos(a) * rr, 1.85f - (i % 2) * 0.12f, Mathf.Sin(a) * rr), new Vector3(0.06f, 0.32f, 0.02f), rags[i % 4],
+                        float a = i * Util.Tau / 10 + 0.2f, rr = 0.62f + (i % 2) * 0.06f;
+                        Prim.Make(PrimitiveType.Cube, t, new Vector3(Mathf.Cos(a) * rr, 1.05f - (i % 2) * 0.08f, Mathf.Sin(a) * rr), new Vector3(0.05f, 0.22f, 0.02f), rags[i % 4],
                             new Vector3(0, -a * Mathf.Rad2Deg, 0), false);
                     }
                     break;
@@ -291,7 +296,6 @@ namespace Otuken
 
         public void Sync(Match m)
         {
-            if (Tree != null) Tree.localRotation = Quaternion.Euler(0, Mathf.Sin(Time.time * 0.4f) * 2f, 0);
             if (m.Owner != shownOwner)
             {
                 shownOwner = m.Owner;

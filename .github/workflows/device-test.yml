@@ -117,6 +117,8 @@ jobs:
       - name: Run the game
         run: |
           APP=$(find dd/Build/Products -maxdepth 2 -name "*.app" -type d | head -n 1)
+          # Apple-silicon simulators refuse to launch completely unsigned apps; an ad-hoc signature is enough.
+          codesign --force --deep --sign - "$APP"
           bash .github/scripts/ios-sim-smoke.sh "$APP" ios-results
           # Zipped simulator build, ready to upload to Appetize.io for manual play in the browser.
           ditto -c -k --sequesterRsrc --keepParent "$APP" Otuken-ios-simulator.zip

@@ -41,7 +41,7 @@ namespace Otuken
                     Debug.LogWarning("[OTUKEN] default primitive material missing; using " + sh.name);
                 }
             }
-            m = new Material(baseLit) { color = c };
+            m = new Material(baseLit) { color = c, enableInstancing = true }; // same-colour parts draw together
             if (m.HasProperty("_Smoothness")) m.SetFloat("_Smoothness", 0.15f);
             if (m.HasProperty("_Glossiness")) m.SetFloat("_Glossiness", 0.15f);
             cache[c] = m;

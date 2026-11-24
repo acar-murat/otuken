@@ -84,7 +84,7 @@ namespace Otuken
         void AutoTick(float dt)
         {
             autoClock += dt; fpsTime += dt; fpsFrames++;
-            if (state == State.Menu && autoClock > 6f)
+            if (state == State.Menu && autoClock > 25f)
             {
                 chosen = HeroDb.Heroes[2];
                 SetShowcase(chosen);
@@ -185,8 +185,12 @@ namespace Otuken
             sun.transform.rotation = Quaternion.Euler(52f, -35f, 0f);
             sun.color = new Color(1f, 0.92f, 0.8f);
             sun.intensity = 1.15f;
-            sun.shadows = LightShadows.Soft;
-            sun.shadowStrength = 0.7f;
+            // Hard shadows over a short distance: most of their look for much less GPU time on phones.
+            sun.shadows = LightShadows.Hard;
+            sun.shadowStrength = 0.6f;
+            QualitySettings.shadowDistance = 26f;
+            QualitySettings.shadowCascades = 1;
+            QualitySettings.shadowResolution = ShadowResolution.Medium;
         }
 
         void BuildShowcase()
