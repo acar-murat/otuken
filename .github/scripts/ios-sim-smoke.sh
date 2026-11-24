@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Runs the game on an iOS Simulator in autotest mode, taking screenshots and collecting logs.
+# Runs the game on iOS Simulators in autotest mode: the newest iPhone runtime and, when installed,
+# an iOS 18 runtime. Launches Safari first on each as a control, then takes screenshots and logs.
 # Usage: ios-sim-smoke.sh <path/to/App.app> <output-dir>
 set -uo pipefail
 APP="$1"; OUT="$2"
@@ -8,82 +9,89 @@ START_MARK=$(mktemp)
 
 BUNDLE=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")
 EXE=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$APP/Info.plist")
-echo "bundle=$BUNDLE exe=$EXE" | tee "$OUT/device.txt"
-lipo -info "$APP/$EXE" | tee -a "$OUT/device.txt"
-lipo -info "$APP/Frameworks/UnityFramework.framework/UnityFramework" | tee -a "$OUT/device.txt"
-
-DEV=$(xcrun simctl list devices available -j | python3 -c '
-import json, sys
-d = json.load(sys.stdin)["devices"]
-phones = [x for k, v in d.items() if "iOS" in k for x in v if x["name"].startswith("iPhone")]
-print(phones[-1]["udid"] if phones else "")')
-if [ -z "$DEV" ]; then echo "::error::No iPhone simulator available"; exit 1; fi
-xcrun simctl list devices | grep "$DEV" | tee -a "$OUT/device.txt"
-
-xcrun simctl boot "$DEV" 2>/dev/null || true
-# Headless boots on CI can stall at "Waiting on System App"; opening the Simulator app lets SpringBoard finish.
-open -a Simulator --args -CurrentDeviceUDID "$DEV" || true
-for attempt in 1 2 3; do
-  if xcrun simctl bootstatus "$DEV" -b >/dev/null 2>&1; then echo "boot complete (attempt $attempt)"; break; fi
-  echo "bootstatus attempt $attempt failed; waiting"; sleep 20
-done
-echo "settling for 30s..."; sleep 30
-
-xcrun simctl install "$DEV" "$APP"
-
-# Load diagnostics: what platform the binaries target, how they are signed, and what the loader says
-# when the executable is started directly inside the simulator.
 {
-  echo "== vtool (platform the binaries were built for)"
-  xcrun vtool -show-build "$APP/$EXE" 2>&1 | head -20
-  xcrun vtool -show-build "$APP/Frameworks/UnityFramework.framework/UnityFramework" 2>&1 | head -20
-  echo "== codesign"
-  codesign -dv "$APP" 2>&1
-  codesign -dv "$APP/Frameworks/UnityFramework.framework" 2>&1
-  echo "== linked libraries"
-  otool -L "$APP/$EXE" 2>&1
+  echo "bundle=$BUNDLE exe=$EXE"
+  xcrun vtool -show-build "$APP/$EXE" 2>&1 | grep -E "platform|minos|sdk"
   echo "== Info.plist"
-  plutil -p "$APP/Info.plist" 2>&1 | head -60
-  CONTAINER=$(xcrun simctl get_app_container "$DEV" "$BUNDLE" app)
-  echo "== direct spawn of $CONTAINER/$EXE (20s)"
-  SIMCTL_CHILD_OTUKEN_AUTOTEST=1 xcrun simctl spawn "$DEV" "$CONTAINER/$EXE" > "$OUT/spawn.log" 2>&1 &
-  SP=$!; sleep 20; kill "$SP" 2>/dev/null || true; wait "$SP" 2>/dev/null; echo "spawn exit status: $?"
-  head -c 6000 "$OUT/spawn.log"
-} > "$OUT/diagnostics.txt" 2>&1
-cat "$OUT/diagnostics.txt"
-xcrun simctl terminate "$DEV" "$BUNDLE" 2>/dev/null || true
+  plutil -p "$APP/Info.plist"
+  echo "== entitlements"
+  codesign -d --entitlements - "$APP" 2>&1
+  echo "== runtimes"
+  xcrun simctl list runtimes
+} > "$OUT/app-info.txt" 2>&1
 
-xcrun simctl spawn "$DEV" log stream --style compact --level debug \
-  --predicate "process == \"$EXE\" OR (process == \"SpringBoard\" AND eventMessage CONTAINS \"$BUNDLE\")" \
-  > "$OUT/stream.log" 2>&1 &
-STREAM=$!
-sleep 2
+# Pick devices: newest iOS runtime, plus an iOS 18 runtime if the runner has one.
+xcrun simctl list devices available -j > "$OUT/devices.json"
+DEVICES=$(python3 - "$OUT/devices.json" <<'PY'
+import json, sys, re
+d = json.load(open(sys.argv[1]))["devices"]
+def ver(k):
+    m = re.search(r"iOS-(\d+)-(\d+)", k)
+    return (int(m.group(1)), int(m.group(2))) if m else (0, 0)
+runtimes = sorted([k for k in d if "iOS" in k and any(x["name"].startswith("iPhone") for x in d[k])], key=ver)
+picked = []
+if runtimes:
+    picked.append(runtimes[-1])
+    older = [k for k in runtimes if ver(k)[0] == 18]
+    if older and older[-1] not in picked:
+        picked.append(older[-1])
+for k in picked:
+    phone = [x for x in d[k] if x["name"].startswith("iPhone")][0]
+    print(f'{phone["udid"]} iOS-{ver(k)[0]}.{ver(k)[1]}')
+PY
+)
+echo "devices to test:"; echo "$DEVICES"
+[ -z "$DEVICES" ] && { echo "::error::No iPhone simulator available"; exit 1; }
 
-for attempt in 1 2 3; do
-  if SIMCTL_CHILD_OTUKEN_AUTOTEST=1 xcrun simctl launch --terminate-running-process \
-       --stdout="$OUT/stdout.log" --stderr="$OUT/stderr.log" "$DEV" "$BUNDLE" >> "$OUT/launch.txt" 2>&1; then
-    echo "launched on attempt $attempt" | tee -a "$OUT/launch.txt"; break
-  fi
-  echo "launch attempt $attempt failed" | tee -a "$OUT/launch.txt"; sleep 20
-done
-cat "$OUT/launch.txt"
+open -a Simulator || true
 
-prev=0
-for t in 5 12 20 30 45 60 80 100 120; do
-  sleep $((t - prev)); prev=$t
-  xcrun simctl spawn "$DEV" launchctl list 2>/dev/null | grep -m1 "UIKitApplication:$BUNDLE" | sed "s/^/[${t}s] /" >> "$OUT/alive.txt" || echo "[${t}s] not running" >> "$OUT/alive.txt"
-  xcrun simctl io "$DEV" screenshot "$OUT/shot_$(printf %03d "$t")s.png" >/dev/null 2>&1 || echo "screenshot at ${t}s failed"
-done
+while read -r DEV LABEL; do
+  [ -z "$DEV" ] && continue
+  D="$OUT/$LABEL"; mkdir -p "$D"
+  echo "=================== $LABEL ($DEV)"
+  xcrun simctl boot "$DEV" 2>/dev/null || true
+  for attempt in 1 2 3; do
+    if xcrun simctl bootstatus "$DEV" -b >/dev/null 2>&1; then echo "boot complete (attempt $attempt)"; break; fi
+    echo "bootstatus attempt $attempt failed; waiting"; sleep 20
+  done
+  sleep 20
 
-if xcrun simctl spawn "$DEV" launchctl list | grep -q "UIKitApplication:$BUNDLE"; then echo "RUNNING after ${prev}s" | tee "$OUT/status.txt"; else echo "NOT RUNNING after ${prev}s (crashed or exited)" | tee "$OUT/status.txt"; fi
-kill "$STREAM" 2>/dev/null || true
-xcrun simctl terminate "$DEV" "$BUNDLE" 2>/dev/null || true
+  echo "-- control: launching Safari"
+  if xcrun simctl launch "$DEV" com.apple.mobilesafari > "$D/control.txt" 2>&1; then echo "CONTROL OK: Safari launched" | tee -a "$D/control.txt"
+  else echo "CONTROL FAILED: Safari did not launch" | tee -a "$D/control.txt"; fi
+  sleep 5; xcrun simctl terminate "$DEV" com.apple.mobilesafari 2>/dev/null || true
+
+  xcrun simctl install "$DEV" "$APP"
+  xcrun simctl spawn "$DEV" log stream --style compact --level debug \
+    --predicate "process == \"$EXE\" OR (process == \"SpringBoard\" AND eventMessage CONTAINS \"$BUNDLE\") OR (process == \"runningboardd\" AND eventMessage CONTAINS \"$BUNDLE\")" \
+    > "$D/stream.log" 2>&1 &
+  STREAM=$!
+  sleep 2
+
+  for attempt in 1 2; do
+    if SIMCTL_CHILD_OTUKEN_AUTOTEST=1 xcrun simctl launch --terminate-running-process \
+         --stdout="$D/stdout.log" --stderr="$D/stderr.log" "$DEV" "$BUNDLE" >> "$D/launch.txt" 2>&1; then
+      echo "GAME LAUNCHED on attempt $attempt" | tee -a "$D/launch.txt"; break
+    fi
+    echo "game launch attempt $attempt failed" | tee -a "$D/launch.txt"; sleep 15
+  done
+
+  prev=0
+  for t in 5 15 30 45 60 90; do
+    sleep $((t - prev)); prev=$t
+    if xcrun simctl spawn "$DEV" launchctl list 2>/dev/null | grep -q "UIKitApplication:$BUNDLE"; then echo "[${t}s] running" >> "$D/alive.txt"; else echo "[${t}s] not running" >> "$D/alive.txt"; fi
+    xcrun simctl io "$DEV" screenshot "$D/shot_$(printf %03d "$t")s.png" >/dev/null 2>&1 || true
+  done
+  grep -q running "$D/alive.txt" && grep -qv "not running" "$D/alive.txt" && echo "RUNNING" > "$D/status.txt" || echo "NOT RUNNING" > "$D/status.txt"
+  kill "$STREAM" 2>/dev/null || true
+  xcrun simctl terminate "$DEV" "$BUNDLE" 2>/dev/null || true
+  xcrun simctl shutdown "$DEV" 2>/dev/null || true
+
+  echo "-- $LABEL: $(cat "$D/status.txt")"; cat "$D/control.txt"; tail -n 3 "$D/launch.txt"
+  grep -h "OTUKEN" "$D/stdout.log" "$D/stderr.log" 2>/dev/null | head -8
+  grep -iE "denied|reason|launch.*fail|Aborting|crash|exited" "$D/stream.log" | cut -c1-300 | head -8
+done <<< "$DEVICES"
 
 mkdir -p "$OUT/crashes"
 find ~/Library/Logs/DiagnosticReports -type f -newer "$START_MARK" -exec cp {} "$OUT/crashes/" \; 2>/dev/null || true
 ls "$OUT/crashes"
-
-echo "---- alive ----"; cat "$OUT/alive.txt"
-echo "---- stdout (tail) ----"; tail -n 40 "$OUT/stdout.log" 2>/dev/null
-echo "---- OTUKEN lines ----"
-grep -h "OTUKEN" "$OUT/stdout.log" "$OUT/stderr.log" "$OUT/stream.log" 2>/dev/null | head -60 || echo "(no OTUKEN log lines found)"
