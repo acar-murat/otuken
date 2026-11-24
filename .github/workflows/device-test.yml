@@ -116,6 +116,10 @@ jobs:
         run: |
           APP=$(find dd/Build/Products -maxdepth 2 -name "*.app" -type d | head -n 1)
           bash .github/scripts/ios-sim-smoke.sh "$APP" ios-results
+          # Zipped simulator build, ready to upload to Appetize.io for manual play in the browser.
+          ditto -c -k --sequesterRsrc --keepParent "$APP" Otuken-ios-simulator.zip
+      - uses: actions/upload-artifact@v4
+        with: { name: ios-simulator-app, path: Otuken-ios-simulator.zip, retention-days: 14 }
       - uses: actions/upload-artifact@v4
         if: always()
         with: { name: ios-results, path: ios-results, retention-days: 7 }
