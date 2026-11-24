@@ -25,6 +25,29 @@ xcrun simctl bootstatus "$DEV" -b >/dev/null 2>&1 || echo "bootstatus reported a
 echo "settling for 30s..."; sleep 30
 
 xcrun simctl install "$DEV" "$APP"
+
+# Load diagnostics: what platform the binaries target, how they are signed, and what the loader says
+# when the executable is started directly inside the simulator.
+{
+  echo "== vtool (platform the binaries were built for)"
+  xcrun vtool -show-build "$APP/$EXE" 2>&1 | head -20
+  xcrun vtool -show-build "$APP/Frameworks/UnityFramework.framework/UnityFramework" 2>&1 | head -20
+  echo "== codesign"
+  codesign -dv "$APP" 2>&1
+  codesign -dv "$APP/Frameworks/UnityFramework.framework" 2>&1
+  echo "== linked libraries"
+  otool -L "$APP/$EXE" 2>&1
+  echo "== Info.plist"
+  plutil -p "$APP/Info.plist" 2>&1 | head -60
+  CONTAINER=$(xcrun simctl get_app_container "$DEV" "$BUNDLE" app)
+  echo "== direct spawn of $CONTAINER/$EXE (20s)"
+  SIMCTL_CHILD_OTUKEN_AUTOTEST=1 xcrun simctl spawn "$DEV" "$CONTAINER/$EXE" > "$OUT/spawn.log" 2>&1 &
+  SP=$!; sleep 20; kill "$SP" 2>/dev/null || true; wait "$SP" 2>/dev/null; echo "spawn exit status: $?"
+  head -c 6000 "$OUT/spawn.log"
+} > "$OUT/diagnostics.txt" 2>&1
+cat "$OUT/diagnostics.txt"
+xcrun simctl terminate "$DEV" "$BUNDLE" 2>/dev/null || true
+
 xcrun simctl spawn "$DEV" log stream --style compact --level debug \
   --predicate "process == \"$EXE\" OR (process == \"SpringBoard\" AND eventMessage CONTAINS \"$BUNDLE\")" \
   > "$OUT/stream.log" 2>&1 &

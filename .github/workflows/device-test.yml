@@ -4,6 +4,11 @@ name: Device test (simulator + emulator)
 # driven by the bot AI), and uploads screenshots and logs. Free on a public repository.
 on:
   workflow_dispatch:
+    inputs:
+      only_ios:
+        description: Skip Android and test only the iPhone Simulator
+        type: boolean
+        default: false
 
 concurrency:
   group: device-test-${{ github.ref }}
@@ -15,6 +20,7 @@ env:
 jobs:
   android-build:
     name: Android test APK (arm64 + x86_64)
+    if: ${{ !inputs.only_ios }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
@@ -72,6 +78,7 @@ jobs:
   ios-export:
     name: Unity → Xcode project (Simulator SDK)
     needs: android-build   # one Unity job at a time, so the Personal license is never used twice at once
+    if: ${{ always() && (needs.android-build.result == 'success' || needs.android-build.result == 'skipped') }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
@@ -100,6 +107,7 @@ jobs:
   ios-simulator:
     name: Run on iPhone Simulator
     needs: ios-export
+    if: ${{ always() && needs.ios-export.result == 'success' }}
     runs-on: macos-latest
     timeout-minutes: 60
     steps:
