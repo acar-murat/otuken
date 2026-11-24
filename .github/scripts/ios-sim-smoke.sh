@@ -21,7 +21,12 @@ if [ -z "$DEV" ]; then echo "::error::No iPhone simulator available"; exit 1; fi
 xcrun simctl list devices | grep "$DEV" | tee -a "$OUT/device.txt"
 
 xcrun simctl boot "$DEV" 2>/dev/null || true
-xcrun simctl bootstatus "$DEV" -b >/dev/null 2>&1 || echo "bootstatus reported an error (continuing)"
+# Headless boots on CI can stall at "Waiting on System App"; opening the Simulator app lets SpringBoard finish.
+open -a Simulator --args -CurrentDeviceUDID "$DEV" || true
+for attempt in 1 2 3; do
+  if xcrun simctl bootstatus "$DEV" -b >/dev/null 2>&1; then echo "boot complete (attempt $attempt)"; break; fi
+  echo "bootstatus attempt $attempt failed; waiting"; sleep 20
+done
 echo "settling for 30s..."; sleep 30
 
 xcrun simctl install "$DEV" "$APP"
@@ -54,8 +59,14 @@ xcrun simctl spawn "$DEV" log stream --style compact --level debug \
 STREAM=$!
 sleep 2
 
-SIMCTL_CHILD_OTUKEN_AUTOTEST=1 xcrun simctl launch --terminate-running-process \
-  --stdout="$OUT/stdout.log" --stderr="$OUT/stderr.log" "$DEV" "$BUNDLE" 2>&1 | tee "$OUT/launch.txt"
+for attempt in 1 2 3; do
+  if SIMCTL_CHILD_OTUKEN_AUTOTEST=1 xcrun simctl launch --terminate-running-process \
+       --stdout="$OUT/stdout.log" --stderr="$OUT/stderr.log" "$DEV" "$BUNDLE" >> "$OUT/launch.txt" 2>&1; then
+    echo "launched on attempt $attempt" | tee -a "$OUT/launch.txt"; break
+  fi
+  echo "launch attempt $attempt failed" | tee -a "$OUT/launch.txt"; sleep 20
+done
+cat "$OUT/launch.txt"
 
 prev=0
 for t in 5 12 20 30 45 60 80 100 120; do
