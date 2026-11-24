@@ -168,7 +168,8 @@ namespace Otuken
                     if (a.Alive && a.Team == u.Team && (a.Pos - u.Pos).sqrMagnitude < 1.7f * 1.7f)
                         Heal(u, a, u.Kit.Aura * dt * (a == u ? 0.5f : 1f));
 
-            Cmd c = u.IsPlayer ? FromPlayer(u, pc) : Brain.Think(this, u, dt);
+            // A player with a bot brain attached (automated test runs) plays on autopilot.
+            Cmd c = u.IsPlayer && u.Ai == null ? FromPlayer(u, pc) : Brain.Think(this, u, dt);
             if (u.Stun > 0) c = default;
 
             if (u.Dashing)

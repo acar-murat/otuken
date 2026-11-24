@@ -14,14 +14,32 @@ namespace Otuken
         static Material baseLit, lineMat;
         static readonly Dictionary<Color, Material> cache = new Dictionary<Color, Material>();
 
+        // CreatePrimitive adds these components; referencing them keeps the build from stripping them
+        // (Unity documents that CreatePrimitive can fail at runtime otherwise).
+        public static readonly System.Type[] KeepTypes =
+        {
+            typeof(MeshFilter), typeof(MeshRenderer), typeof(BoxCollider), typeof(SphereCollider),
+            typeof(CapsuleCollider), typeof(MeshCollider), typeof(LineRenderer), typeof(AudioSource),
+        };
+
         public static Material Lit(Color c)
         {
             if (cache.TryGetValue(c, out var m) && m != null) return m;
             if (baseLit == null)
             {
                 var probe = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                baseLit = new Material(probe.GetComponent<Renderer>().sharedMaterial);
+                var shared = probe.GetComponent<Renderer>().sharedMaterial;
                 Object.Destroy(probe);
+                if (shared != null && shared.shader != null && shared.shader.isSupported) baseLit = new Material(shared);
+                else
+                {
+                    var sh = Shader.Find("Universal Render Pipeline/Lit");
+                    if (sh == null || !sh.isSupported) sh = Shader.Find("Standard");
+                    if (sh == null || !sh.isSupported) sh = Shader.Find("Legacy Shaders/Diffuse");
+                    if (sh == null) sh = Shader.Find("Sprites/Default");
+                    baseLit = new Material(sh);
+                    Debug.LogWarning("[OTUKEN] default primitive material missing; using " + sh.name);
+                }
             }
             m = new Material(baseLit) { color = c };
             if (m.HasProperty("_Smoothness")) m.SetFloat("_Smoothness", 0.15f);

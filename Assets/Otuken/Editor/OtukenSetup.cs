@@ -31,8 +31,17 @@ namespace Otuken.EditorTools
             PlayerSettings.allowedAutorotateToLandscapeLeft = true;
             PlayerSettings.allowedAutorotateToLandscapeRight = true;
 
+            // Everything is created from code at runtime with an empty scene, so the build cannot see
+            // which engine parts are used. Keep engine code and make sure the shaders we look up ship.
+            PlayerSettings.stripEngineCode = false;
+            PlayerSettings.SetManagedStrippingLevel(NamedBuildTarget.Android, ManagedStrippingLevel.Minimal);
+            PlayerSettings.SetManagedStrippingLevel(NamedBuildTarget.iOS, ManagedStrippingLevel.Minimal);
+
             EnsureScene();
-            AlwaysInclude("Sprites/Default"); // used by ground rings and effect lines
+            AlwaysInclude("Sprites/Default"); // ground rings and effect lines
+            AlwaysInclude("Standard");        // fallback lit shader (built-in pipeline)
+            AlwaysInclude("Legacy Shaders/Diffuse");
+            AlwaysInclude("Universal Render Pipeline/Lit"); // only exists in URP projects
             AssetDatabase.SaveAssets();
             Debug.Log("Ötüken: project set up. Press Play to test, or use Otuken > Build Android APK.");
         }
@@ -98,7 +107,32 @@ namespace Otuken.EditorTools
         public static void BuildIosCi()
         {
             SetUp();
+            PlayerSettings.iOS.sdkVersion = iOSSdkVersion.DeviceSDK;
             EditorApplication.Exit(Build(BuildTarget.iOS, "Builds/iOS") ? 0 : 1);
+        }
+
+        /// <summary>Test build for the iOS Simulator on Apple-silicon Macs.</summary>
+        public static void BuildIosSimCi()
+        {
+            SetUp();
+            PlayerSettings.iOS.sdkVersion = iOSSdkVersion.SimulatorSDK;
+            // Set by reflection so the editor script still compiles if this setting is renamed.
+            var prop = typeof(PlayerSettings.iOS).GetProperty("simulatorSdkArchitecture");
+            if (prop != null && prop.CanWrite) prop.SetValue(null, System.Enum.Parse(prop.PropertyType, "ARM64"));
+            bool ok = Build(BuildTarget.iOS, "Builds/iOS-Sim");
+            PlayerSettings.iOS.sdkVersion = iOSSdkVersion.DeviceSDK;
+            EditorApplication.Exit(ok ? 0 : 1);
+        }
+
+        /// <summary>Test APK that also runs on x86_64 Android emulators.</summary>
+        public static void BuildAndroidTestCi()
+        {
+            SetUp();
+            EditorUserBuildSettings.buildAppBundle = false;
+            PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64 | AndroidArchitecture.X86_64;
+            bool ok = Build(BuildTarget.Android, "Builds/Android/Otuken-test.apk");
+            PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
+            EditorApplication.Exit(ok ? 0 : 1);
         }
 
         static bool Build(BuildTarget target, string path)

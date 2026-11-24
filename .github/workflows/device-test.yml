@@ -1,0 +1,121 @@
+name: Device test (simulator + emulator)
+
+# Runs the game on an iPhone Simulator and an Android emulator in autotest mode (the player's hero is
+# driven by the bot AI), and uploads screenshots and logs. Free on a public repository.
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: device-test-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UNITY_VERSION: 6000.3.29f1
+
+jobs:
+  android-build:
+    name: Android test APK (arm64 + x86_64)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: jlumbroso/free-disk-space@v1.3.1
+        with: { tool-cache: true, android: true, dotnet: true, haskell: true, large-packages: true, docker-images: true, swap-storage: true }
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: Library
+          key: Library-Otuken-Android-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
+          restore-keys: Library-Otuken-Android-
+      - uses: game-ci/unity-builder@v4
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          unityVersion: ${{ env.UNITY_VERSION }}
+          customImage: unityci/editor:ubuntu-6000.3.29f1-android-4
+          targetPlatform: Android
+          buildMethod: Otuken.EditorTools.OtukenSetup.BuildAndroidTestCi
+      - uses: actions/upload-artifact@v4
+        with: { name: android-test-apk, path: Builds/Android/Otuken-test.apk, retention-days: 3, if-no-files-found: error }
+
+  android-emulator:
+    name: Run on Android emulator
+    needs: android-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: android-test-apk, path: apk }
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Boot emulator and run the game
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: bash .github/scripts/android-smoke.sh apk/Otuken-test.apk android-results
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: android-results, path: android-results, retention-days: 7 }
+
+  ios-export:
+    name: Unity → Xcode project (Simulator SDK)
+    needs: android-build   # one Unity job at a time, so the Personal license is never used twice at once
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: jlumbroso/free-disk-space@v1.3.1
+        with: { tool-cache: true, android: true, dotnet: true, haskell: true, large-packages: true, docker-images: true, swap-storage: true }
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: Library
+          key: Library-Otuken-iOSSim-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
+          restore-keys: Library-Otuken-iOSSim-
+      - uses: game-ci/unity-builder@v4
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          unityVersion: ${{ env.UNITY_VERSION }}
+          customImage: unityci/editor:ubuntu-6000.3.29f1-ios-4
+          targetPlatform: iOS
+          buildMethod: Otuken.EditorTools.OtukenSetup.BuildIosSimCi
+      - run: sudo tar -czf xcode-sim.tgz -C Builds iOS-Sim
+      - uses: actions/upload-artifact@v4
+        with: { name: xcode-sim, path: xcode-sim.tgz, retention-days: 1, if-no-files-found: error }
+
+  ios-simulator:
+    name: Run on iPhone Simulator
+    needs: ios-export
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: xcode-sim }
+      - run: tar -xzf xcode-sim.tgz
+      - name: Build for Simulator
+        working-directory: iOS-Sim
+        run: |
+          set -o pipefail
+          xcodebuild -project Unity-iPhone.xcodeproj -scheme Unity-iPhone -configuration Release \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath ../dd \
+            CODE_SIGNING_ALLOWED=NO build | tail -n 80
+      - name: Run the game
+        run: |
+          APP=$(find dd/Build/Products -maxdepth 2 -name "*.app" -type d | head -n 1)
+          bash .github/scripts/ios-sim-smoke.sh "$APP" ios-results
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: ios-results, path: ios-results, retention-days: 7 }

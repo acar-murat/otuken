@@ -60,10 +60,70 @@ namespace Otuken
         string clockStr, hpStr, respawnStr, playerName, skillName, ultName;
         int clockSec = -1, hpVal = -1, respawnVal = -1;
 
+        // Automated smoke test (simulator / emulator runs): launch with env OTUKEN_AUTOTEST=1 or arg -otukenAutotest.
+        bool autotest, autoEndLogged;
+        float autoClock, autoNextReport, fpsTime;
+        int fpsFrames, errorCount;
+        string lastError;
+
+        static bool AutotestRequested()
+        {
+            if (System.Environment.GetEnvironmentVariable("OTUKEN_AUTOTEST") == "1") return true;
+            foreach (var a in System.Environment.GetCommandLineArgs())
+                if (a == "-otukenAutotest") return true;
+            return false;
+        }
+
+        void OnLog(string message, string stack, LogType type)
+        {
+            if (type != LogType.Error && type != LogType.Exception && type != LogType.Assert) return;
+            errorCount++;
+            lastError = message;
+        }
+
+        void AutoTick(float dt)
+        {
+            autoClock += dt; fpsTime += dt; fpsFrames++;
+            if (state == State.Menu && autoClock > 6f)
+            {
+                chosen = HeroDb.Heroes[2];
+                SetShowcase(chosen);
+                StartMatch();
+                match.Player.Ai = new BotState();
+                Debug.Log("[OTUKEN] autotest: match started as " + chosen.Name);
+            }
+            if (autoClock >= autoNextReport)
+            {
+                autoNextReport = autoClock + 5f;
+                float fps = fpsFrames / Mathf.Max(0.001f, fpsTime);
+                fpsFrames = 0; fpsTime = 0;
+                string m = "";
+                if (match != null && !match.Demo)
+                {
+                    int alive = 0, kills = 0;
+                    foreach (var u in match.Units) { if (u.Alive) alive++; kills += u.Kills; }
+                    m = $" score={match.Score[0]:0}/{match.Score[1]:0} owner={match.Owner} prog={match.Prog:0} alive={alive}/8 kills={kills}" +
+                        $" player={match.Player.Hero.Name} hp={match.Player.Hp:0} pos=({match.Player.Pos.x:0.0},{match.Player.Pos.y:0.0})";
+                }
+                Debug.Log($"[OTUKEN] t={autoClock:0}s state={state} fps={fps:0} errors={errorCount}{m}" + (lastError != null ? " lastError=" + lastError : ""));
+            }
+            if (state == State.Ended && !autoEndLogged)
+            {
+                autoEndLogged = true;
+                Debug.Log($"[OTUKEN] autotest: match ended, winner={match.Winner}");
+            }
+        }
+
         // ------------------------------------------------------------------ setup
 
         void Awake()
         {
+            Application.logMessageReceived += OnLog;
+            autotest = AutotestRequested();
+            Debug.Log($"[OTUKEN] boot autotest={autotest} device={SystemInfo.deviceModel} os={SystemInfo.operatingSystem} " +
+                      $"gfx={SystemInfo.graphicsDeviceType} screen={Screen.width}x{Screen.height} dpi={Screen.dpi:0} " +
+                      $"pipeline={(UnityEngine.Rendering.GraphicsSettings.currentRenderPipeline != null ? UnityEngine.Rendering.GraphicsSettings.currentRenderPipeline.name : "built-in")} " +
+                      $"standard={(Shader.Find("Standard") != null)} sprites={(Shader.Find("Sprites/Default") != null)} keep={Prim.KeepTypes.Length}");
             Application.targetFrameRate = 60;
             Screen.sleepTimeout = SleepTimeout.NeverSleep;
             Screen.autorotateToPortrait = false;
@@ -278,6 +338,8 @@ namespace Otuken
 
             for (int i = feed.Count - 1; i >= 0; i--)
                 if (Time.unscaledTime - feed[i].Born > 6f) feed.RemoveAt(i);
+
+            if (autotest) AutoTick(Time.unscaledDeltaTime);
         }
 
         void EnterEnd()
