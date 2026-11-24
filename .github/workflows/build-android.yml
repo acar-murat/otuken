@@ -49,6 +49,8 @@ jobs:
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
         with:
           unityVersion: 6000.3.29f1
+          # unity-builder v4 defaults to image series 3, which has no 6000.3.29f1 build; series 4 does.
+          customImage: unityci/editor:ubuntu-6000.3.29f1-android-4
           targetPlatform: Android
           buildMethod: Otuken.EditorTools.OtukenSetup.BuildAndroidCi
 
