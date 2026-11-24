@@ -1,0 +1,36 @@
+Ötüken — Proprietary License
+
+Copyright (c) 2026 murat acar. All rights reserved.
+
+This repository, including its source code, game design, characters as
+presented here, text, and any other material in it (the "Software"), is the
+exclusive property of the copyright holder.
+
+The Software is made publicly visible for viewing only. No license or right is
+granted to you by making it visible. In particular, without a separate written
+license agreement signed by the copyright holder, and payment of any fee that
+agreement requires, you may NOT:
+
+  1. use, run, or install the Software, or any part of it, for any purpose;
+  2. copy, reproduce, or download the Software, except the temporary copies your
+     browser or device makes to display it on the hosting website;
+  3. modify, translate, adapt, or create derivative works based on the Software;
+  4. distribute, publish, sublicense, sell, rent, lend, or otherwise make the
+     Software or any derivative work available to anyone;
+  5. use the Software, or any part of it, to train, fine-tune, or evaluate
+     machine-learning or artificial-intelligence systems.
+
+The only permissions granted are those the hosting service's terms of service
+require public repositories to grant to its users (for example, viewing and
+forking within that service). Those permissions do not include any right to
+use, run, or distribute the Software outside that service.
+
+To obtain a license, contact the copyright holder through the account that
+hosts this repository.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED. IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES
+OR OTHER LIABILITY ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE.
+
+Any use not expressly permitted by a signed written license is an infringement
+of the copyright holder's rights.

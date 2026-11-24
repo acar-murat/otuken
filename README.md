@@ -11,6 +11,10 @@ A 4v4 mobile hero brawler drawn from Turkic mythology. Two sides fight to hold t
 
 You play one hero; bots fill the other seven seats. Difficulty sets how hard the rival bots hit, aim and react.
 
+## License
+
+**Proprietary, all rights reserved.** The code is public for viewing only. Using, copying, modifying or distributing it requires a paid written license from the author. See [LICENSE](LICENSE).
+
 ## Tech
 
 - **Engine:** Unity 6 LTS (any 6000.x LTS release).
