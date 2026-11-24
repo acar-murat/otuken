@@ -41,6 +41,24 @@ You play one hero; bots fill the other seven seats. Difficulty sets how hard the
 
 For Google Play, use **Otuken → Build Android App Bundle**. First create an upload keystore under *Project Settings → Player → Android → Publishing Settings*.
 
+## Versions and downloads
+
+The game uses [Semantic Versioning](https://semver.org): `MAJOR.MINOR.PATCH`. The current version is in the `VERSION` file, and `CHANGELOG.md` lists what changed in each version.
+
+- **Latest release:** https://github.com/acar-murat/otuken/releases/latest has `Otuken-X.Y.Z.apk` for Android and `Otuken-X.Y.Z-unsigned.ipa` for iPhone (install it with Sideloadly).
+- **Builds between releases** carry build metadata in their names, such as `Otuken-0.1.0+42.apk` (build 42 after 0.1.0). They are in each workflow run's *Artifacts*.
+- **Inside the app:** the version shows at the bottom of the menu screen. The store build number is `MAJOR×10000 + MINOR×100 + PATCH`; 0.1.0 is build 100.
+
+To release a new version:
+
+1. Edit `VERSION` with a higher number:
+   - PATCH for fixes (`0.1.1`)
+   - MINOR for new features (`0.2.0`)
+   - MAJOR for big or incompatible changes (`1.0.0`)
+2. Add a section for that version to `CHANGELOG.md`.
+3. Commit and push.
+4. Run **Actions → Release → Run workflow**. It builds both platforms, creates the tag `vX.Y.Z`, and publishes the release with both files attached.
+
 ## Cloud builds (GitHub Actions, free)
 
 `.github/workflows/build-android.yml` builds the Android APK with [GameCI](https://game.ci) on every push to `main`. You can also start it from the **Actions** tab with *Run workflow*. The finished APK is attached to the run as the **Otuken-Android** artifact. Download it, unzip it, and install it on your phone.

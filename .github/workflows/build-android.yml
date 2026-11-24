@@ -60,9 +60,15 @@ jobs:
           targetPlatform: Android
           buildMethod: Otuken.EditorTools.OtukenSetup.BuildAndroidCi
 
+      # Between releases, builds carry SemVer build metadata: VERSION+run number (e.g. 0.1.0+42).
+      - name: Name APK with its version
+        run: |
+          V=$(tr -d ' \r\n' < VERSION)
+          sudo cp Builds/Android/Otuken.apk "Otuken-${V}+${GITHUB_RUN_NUMBER}.apk"
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: Otuken-Android
-          path: Builds/Android/Otuken.apk
+          path: 'Otuken-*.apk'
           if-no-files-found: error

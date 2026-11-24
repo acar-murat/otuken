@@ -13,11 +13,31 @@ namespace Otuken.EditorTools
         const string ScenePath = "Assets/Otuken/Otuken.unity";
         const string BundleId = "com.otuken.arena";
 
+        /// <summary>
+        /// Reads the semantic version (MAJOR.MINOR.PATCH) from the VERSION file at the project root.
+        /// The integer build number used by the stores is MAJOR*10000 + MINOR*100 + PATCH.
+        /// </summary>
+        public static string ReadVersion(out int buildNumber)
+        {
+            string v = File.Exists("VERSION") ? File.ReadAllText("VERSION").Trim() : "0.0.0";
+            var m = System.Text.RegularExpressions.Regex.Match(v, @"^(\d+)\.(\d+)\.(\d+)$");
+            if (!m.Success) throw new System.Exception($"VERSION must look like 1.2.3, found '{v}'.");
+            int major = int.Parse(m.Groups[1].Value), minor = int.Parse(m.Groups[2].Value), patch = int.Parse(m.Groups[3].Value);
+            if (minor > 99 || patch > 99) throw new System.Exception("MINOR and PATCH must stay below 100 for the build number.");
+            buildNumber = Mathf.Max(1, major * 10000 + minor * 100 + patch);
+            return v;
+        }
+
         [MenuItem("Otuken/Set Up Project", priority = 0)]
         public static void SetUp()
         {
             PlayerSettings.companyName = "Otuken";
             PlayerSettings.productName = "Ötüken";
+            string version = ReadVersion(out int build);
+            PlayerSettings.bundleVersion = version;
+            PlayerSettings.Android.bundleVersionCode = build;
+            PlayerSettings.iOS.buildNumber = build.ToString();
+            Debug.Log($"Ötüken: version {version} (build {build}).");
             PlayerSettings.SetApplicationIdentifier(NamedBuildTarget.Android, BundleId);
             PlayerSettings.SetApplicationIdentifier(NamedBuildTarget.iOS, BundleId);
 

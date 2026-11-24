@@ -545,7 +545,8 @@ namespace Otuken
             for (int d = 0; d < 3; d++)
                 if (Ui.Button(new Rect(L + d * (bw + 8), y, bw, 40), HeroDb.DifficultyName[d], false, 16, difficulty == d)) { difficulty = d; sfx.Play("tap"); }
             y += 52;
-            Ui.Text(new Rect(L, y, lw, Mathf.Max(20, sa.yMax - y - 8)),
+            Ui.Text(new Rect(L, sa.yMax - 22, lw, 18), "v" + Application.version, 12, Ui.Ash);
+            Ui.Text(new Rect(L, y, lw, Mathf.Max(20, sa.yMax - y - 30)),
                 "Phone: left thumb moves, right thumb aims and fires (hold it still to auto-aim). Tap the round buttons for skill and ultimate.\nKeyboard: WASD to move, mouse to aim, click to fire, E skill, Q ultimate, Esc pause.",
                 13, Ui.Ash, wrap: true);
 

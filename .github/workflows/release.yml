@@ -1,0 +1,138 @@
+name: Release
+
+# Builds the Android APK and the unsigned iPhone .ipa for the version in the VERSION file and publishes
+# them as GitHub Release vX.Y.Z. Start it from Actions → Release → Run workflow (it creates the tag),
+# or push a tag vX.Y.Z that matches VERSION.
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*.*.*']
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  UNITY_VERSION: 6000.3.29f1
+
+jobs:
+  version:
+    name: Read version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        run: |
+          V=$(tr -d ' \r\n' < VERSION)
+          echo "$V" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || { echo "::error::VERSION must be MAJOR.MINOR.PATCH, found '$V'"; exit 1; }
+          if [ "${GITHUB_REF_TYPE}" = "tag" ] && [ "${GITHUB_REF_NAME}" != "v$V" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match VERSION $V"; exit 1
+          fi
+          if [ "${GITHUB_REF_TYPE}" != "tag" ] && git ls-remote --exit-code --tags origin "refs/tags/v$V" >/dev/null; then
+            echo "::error::Release v$V already exists. Bump VERSION (and CHANGELOG.md) first."; exit 1
+          fi
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "Releasing $V"
+
+  android:
+    name: Android APK
+    needs: version
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: jlumbroso/free-disk-space@v1.3.1
+        with: { tool-cache: true, android: true, dotnet: true, haskell: true, large-packages: true, docker-images: true, swap-storage: true }
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: Library
+          key: Library-Otuken-Android-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
+          restore-keys: Library-Otuken-Android-
+      - uses: game-ci/unity-builder@v4
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          unityVersion: ${{ env.UNITY_VERSION }}
+          customImage: unityci/editor:ubuntu-6000.3.29f1-android-4
+          targetPlatform: Android
+          buildMethod: Otuken.EditorTools.OtukenSetup.BuildAndroidCi
+      - run: sudo cp Builds/Android/Otuken.apk "Otuken-${{ needs.version.outputs.version }}.apk"
+      - uses: actions/upload-artifact@v4
+        with: { name: release-apk, path: 'Otuken-*.apk', if-no-files-found: error }
+
+  ios-export:
+    name: Unity → Xcode project
+    needs: [version, android]   # one Unity job at a time for the Personal license
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: jlumbroso/free-disk-space@v1.3.1
+        with: { tool-cache: true, android: true, dotnet: true, haskell: true, large-packages: true, docker-images: true, swap-storage: true }
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: Library
+          key: Library-Otuken-iOS-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
+          restore-keys: Library-Otuken-iOS-
+      - uses: game-ci/unity-builder@v4
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          unityVersion: ${{ env.UNITY_VERSION }}
+          customImage: unityci/editor:ubuntu-6000.3.29f1-ios-4
+          targetPlatform: iOS
+          buildMethod: Otuken.EditorTools.OtukenSetup.BuildIosCi
+      - run: sudo tar -czf xcode-project.tgz -C Builds iOS
+      - uses: actions/upload-artifact@v4
+        with: { name: release-xcode, path: xcode-project.tgz, retention-days: 1, if-no-files-found: error }
+
+  ipa:
+    name: Unsigned .ipa
+    needs: [version, ios-export]
+    runs-on: macos-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: release-xcode }
+      - run: tar -xzf xcode-project.tgz
+      - name: Build without signing
+        working-directory: iOS
+        run: |
+          set -o pipefail
+          xcodebuild -project Unity-iPhone.xcodeproj -scheme Unity-iPhone -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath ../dd \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build | tail -n 60
+      - name: Package .ipa
+        run: |
+          APP=$(find dd/Build/Products -maxdepth 2 -name "*.app" -type d | head -n 1)
+          mkdir Payload && cp -R "$APP" Payload/
+          zip -qry "Otuken-${{ needs.version.outputs.version }}-unsigned.ipa" Payload
+      - uses: actions/upload-artifact@v4
+        with: { name: release-ipa, path: 'Otuken-*-unsigned.ipa', if-no-files-found: error }
+
+  publish:
+    name: Publish GitHub Release
+    needs: [version, android, ipa]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { path: dist, merge-multiple: true }
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          V: ${{ needs.version.outputs.version }}
+        run: |
+          ls -la dist
+          # Release notes: this version's section of CHANGELOG.md.
+          awk -v v="$V" '$0 ~ "^## "v" " {on=1; next} on && /^## / {exit} on' CHANGELOG.md > notes.md
+          printf '\n---\n**Android:** install `Otuken-%s.apk`.\n**iPhone (no developer account):** install `Otuken-%s-unsigned.ipa` with Sideloadly (see README).\n' "$V" "$V" >> notes.md
+          gh release create "v$V" dist/* --title "Ötüken $V" --notes-file notes.md --target "$GITHUB_SHA" --latest

@@ -90,17 +90,21 @@ jobs:
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
             build | tail -n 200
 
+      - uses: actions/checkout@v4
+        with: { path: src, sparse-checkout: VERSION, sparse-checkout-cone-mode: false }
+
       - name: Package .ipa
         run: |
           APP=$(find dd/Build/Products -maxdepth 2 -name "*.app" -type d | head -n 1)
           test -n "$APP" || { echo "::error::No .app produced"; exit 1; }
+          V=$(tr -d ' \r\n' < src/VERSION)
           mkdir Payload
           cp -R "$APP" Payload/
-          zip -qry Otuken-unsigned.ipa Payload
-          ls -lh Otuken-unsigned.ipa
+          zip -qry "Otuken-${V}+${GITHUB_RUN_NUMBER}-unsigned.ipa" Payload
+          ls -lh Otuken-*.ipa
 
       - uses: actions/upload-artifact@v4
         with:
           name: Otuken-iOS-unsigned
-          path: Otuken-unsigned.ipa
+          path: 'Otuken-*-unsigned.ipa'
           if-no-files-found: error

@@ -42,8 +42,9 @@ jobs:
           customImage: unityci/editor:ubuntu-6000.3.29f1-android-4
           targetPlatform: Android
           buildMethod: Otuken.EditorTools.OtukenSetup.BuildAndroidTestCi
+      - run: sudo cp Builds/Android/Otuken-test.apk "Otuken-$(tr -d ' \r\n' < VERSION)+${GITHUB_RUN_NUMBER}-test.apk"
       - uses: actions/upload-artifact@v4
-        with: { name: android-test-apk, path: Builds/Android/Otuken-test.apk, retention-days: 3, if-no-files-found: error }
+        with: { name: android-test-apk, path: 'Otuken-*-test.apk', retention-days: 3, if-no-files-found: error }
 
   android-emulator:
     name: Run on Android emulator
@@ -54,6 +55,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with: { name: android-test-apk, path: apk }
+      - run: mv apk/Otuken-*-test.apk apk/Otuken-test.apk
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
