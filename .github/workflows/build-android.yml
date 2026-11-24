@@ -29,8 +29,14 @@ jobs:
       - name: Free disk space (the Android build image is large)
         uses: jlumbroso/free-disk-space@v1.3.1
         with:
-          android: false
-          large-packages: false
+          # The Unity image brings its own Android SDK, so the runner's copy and other toolchains can all go.
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
 
       - uses: actions/checkout@v4
 
